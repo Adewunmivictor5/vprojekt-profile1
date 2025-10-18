@@ -2,26 +2,31 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE = "frintzy2024/jenkins-ci:${env.BUILD_ID}"
-        DOCKERHUB_CREDENTIALS = "Docker-CredID"  // Replace with your Jenkins Docker Hub creds ID
+        // Docker image name and tag
+        DOCKER_IMAGE = "adewunmivictor5/vprojekt-profile1:${env.BUILD_ID}"
+
+        // Jenkins credentials ID for Docker Hub
+        DOCKERHUB_CREDENTIALS = "dockerhub-credentials"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/Farinze/vprojekt-app.git'
+                echo "🔄 Checking out source code..."
+                git branch: 'main', url: 'https://github.com/Adewunmivictor5/vprojekt-profile1.git'
             }
         }
 
-        stage('Build & Test') {
+        stage('Build & Test with Maven') {
             steps {
-                sh 'mvn clean package'
-                sh 'mvn test'
+                echo "⚙️ Building and testing application..."
+                sh 'mvn clean package -DskipTests=false'
             }
         }
 
         stage('Generate Reports') {
             steps {
+                echo "📊 Generating reports..."
                 sh 'mvn checkstyle:checkstyle'
                 sh 'mvn jacoco:report'
             }
@@ -29,38 +34,50 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
+                echo "🐳 Building Docker image..."
                 sh "docker build -t ${DOCKER_IMAGE} ."
             }
         }
 
-        stage('Push Docker Image') {
+        stage('Push Docker Image to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(credentialsId: DOCKERHUB_CREDENTIALS, usernameVariable: 'DOCKERHUB_USER', passwordVariable: 'DOCKERHUB_PASS')]) {
-                    sh """
+                echo "📤 Pushing image to Docker Hub..."
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: DOCKERHUB_CREDENTIALS,
+                        usernameVariable: 'DOCKERHUB_USER',
+                        passwordVariable: 'DOCKERHUB_PASS'
+                    )
+                ]) {
+                    sh '''
                         echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USER" --password-stdin
                         docker push ${DOCKER_IMAGE}
-                    """
+                        docker tag ${DOCKER_IMAGE} adewunmivictor5/vprojekt-profile1:latest
+                        docker push adewunmivictor5/vprojekt-profile1:latest
+                    '''
                 }
             }
         }
 
-        stage('Deploy') {
+        stage('Deploy Container Locally') {
             steps {
+                echo "🚀 Deploying container on EC2..."
                 sh '''
                     docker rm -f vpro-container || true
                     docker run -d -p 9000:8080 --name vpro-container ${DOCKER_IMAGE}
                 '''
-                echo "🚀 Deployed at: http://<your-server-ip>:9000"
+                echo "🌐 Application deployed successfully at: http://<your-ec2-public-ip>:9000"
             }
         }
     }
 
     post {
         failure {
-            echo '❌ Build failed!'
+            echo '❌ Build failed! Check Jenkins console logs.'
         }
         success {
-            echo '✅ Build and deploy successful!'
+            echo "✅ Build, push, and deployment completed successfully!"
         }
     }
 }
+
